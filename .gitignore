@@ -1,0 +1,37 @@
+# Byte-compiled / cached files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Personal dev env
+uv.lock
+requirements-dev.txt
+
+# Logs
+*.log
+
+# Virtual env
+.venv/
+venv/
+.env/
+/env
+
+# IDE / Editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ruff cache
+.ruff_cache/
+
+# ProtonVPN WireGuard configurations
+# These contain private credentials and must never be committed.
+proton_configs/**/*.conf
+
+# Dev instructions
+instructions.txt
+
+# General Mac OS system files
+.DS_Store
+Thumbs.db
