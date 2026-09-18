@@ -26,7 +26,7 @@ The project uses Proton VPN WireGuard `.conf` files together with `wg`, `wg-quic
 * Detect the active WireGuard interface on macOS.
 * Clean up stale WireGuard runtime markers when no WireGuard interface is active.
 * Handle `Ctrl+C` during timed rotation.
-* Unit-tested with pytest without making real VPN or network changes during the test suite.
+* Unit tested with pytest without making real VPN or network changes during the test suite.
 
 ## Requirements
 
