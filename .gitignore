@@ -6,6 +6,7 @@ __pycache__/
 # Personal dev env
 uv.lock
 requirements-dev.txt
+ruff.toml
 .importlinter
 
 # Logs
