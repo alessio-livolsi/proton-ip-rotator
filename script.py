@@ -5,13 +5,27 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 CONFIG_DIR = Path(__file__).resolve().parent / "proton_configs"
+WIREGUARD_RUNTIME_DIR = Path("/var/run/wireguard")
 IP_URL = "https://api.ipify.org"
 REQUEST_TIMEOUT = 10
+IP_RETRY_ATTEMPTS = 5
+IP_RETRY_DELAY = 1
+
+
+def positive_int(value: str) -> int:
+    """Return a positive integer."""
+    number = int(value)
+
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+
+    return number
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,13 +61,63 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Switch to a different Proton VPN configuration.",
     )
+    parser.add_argument(
+        "--country",
+        metavar="COUNTRY",
+        help="Limit rotation to configurations from a country.",
+    )
 
-    return parser.parse_args()
+    interval_group = parser.add_mutually_exclusive_group()
+
+    interval_group.add_argument(
+        "--interval",
+        type=positive_int,
+        metavar="SECONDS",
+        help="Rotate repeatedly at a fixed interval.",
+    )
+    interval_group.add_argument(
+        "--random-interval",
+        type=positive_int,
+        nargs=2,
+        metavar=("MIN", "MAX"),
+        help="Rotate repeatedly at random intervals between MIN and MAX seconds.",
+    )
+
+    args = parser.parse_args()
+
+    if args.country and not args.rotate:
+        parser.error("--country requires --rotate")
+
+    if args.interval and not args.rotate:
+        parser.error("--interval requires --rotate")
+
+    if args.random_interval and not args.rotate:
+        parser.error("--random-interval requires --rotate")
+
+    if args.random_interval:
+        minimum, maximum = args.random_interval
+
+        if minimum > maximum:
+            parser.error("--random-interval MIN must not be greater than MAX")
+
+    return args
 
 
 def discover_configs(config_dir: Path = CONFIG_DIR) -> list[Path]:
     """Return available WireGuard configuration files."""
     return sorted(config_dir.rglob("*.conf"))
+
+
+def filter_configs_by_country(
+    configs: list[Path],
+    country: str,
+) -> list[Path]:
+    """Return configurations belonging to a country."""
+    return [
+        config
+        for config in configs
+        if config.parent.name.casefold() == country.casefold()
+    ]
 
 
 def get_config(name: str, config_dir: Path = CONFIG_DIR) -> Path:
@@ -75,8 +139,8 @@ def get_config(name: str, config_dir: Path = CONFIG_DIR) -> Path:
     return matches[0]
 
 
-def get_public_ip() -> str:
-    """Return the current public IP address."""
+def fetch_public_ip() -> str:
+    """Fetch the current public IP address."""
     request = urllib.request.Request(
         IP_URL,
         headers={"User-Agent": "proton-ip-rotator"},
@@ -94,6 +158,20 @@ def get_public_ip() -> str:
         ) from error
 
 
+def get_public_ip() -> str:
+    """Return the current public IP address, retrying temporary failures."""
+    for attempt in range(1, IP_RETRY_ATTEMPTS + 1):
+        try:
+            return fetch_public_ip()
+        except RuntimeError:
+            if attempt == IP_RETRY_ATTEMPTS:
+                raise
+
+            time.sleep(IP_RETRY_DELAY)
+
+    raise RuntimeError("Unable to determine public IP.")
+
+
 def find_executable(name: str) -> str:
     """Return the path to an executable."""
     executable = shutil.which(name)
@@ -102,6 +180,26 @@ def find_executable(name: str) -> str:
         raise RuntimeError(f"{name} is not installed or not in PATH.")
 
     return executable
+
+
+def run_command(command: list[str]) -> str:
+    """Run a command and return its standard output."""
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        message = error.stderr.strip() or error.stdout.strip()
+
+        if message:
+            raise RuntimeError(message) from error
+
+        raise RuntimeError(f"Command failed: {' '.join(command)}") from error
+
+    return result.stdout.strip()
 
 
 def run_wg_quick(action: str, config: Path) -> None:
@@ -131,13 +229,78 @@ def disconnect_vpn(config: Path) -> None:
     run_wg_quick("down", config)
 
 
+def get_wireguard_interfaces() -> set[str]:
+    """Return active WireGuard interface names."""
+    wg = find_executable("wg")
+
+    output = run_command(
+        [
+            wg,
+            "show",
+            "interfaces",
+        ]
+    )
+
+    return set(output.split())
+
+
+def get_runtime_interface(config: Path) -> str | None:
+    """Return the runtime interface associated with a configuration."""
+    name_file = WIREGUARD_RUNTIME_DIR / f"{config.stem}.name"
+
+    if not name_file.is_file():
+        return None
+
+    output = run_command(
+        [
+            "sudo",
+            "cat",
+            str(name_file),
+        ]
+    )
+
+    return output or None
+
+
+def remove_stale_runtime_files(configs: list[Path]) -> None:
+    """Remove stale WireGuard configuration name files."""
+    for config in configs:
+        name_file = WIREGUARD_RUNTIME_DIR / f"{config.stem}.name"
+
+        if not name_file.is_file():
+            continue
+
+        try:
+            subprocess.run(
+                [
+                    "sudo",
+                    "rm",
+                    "-f",
+                    str(name_file),
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(
+                f"Unable to remove stale runtime file for {config.stem}."
+            ) from error
+
+
 def get_active_config(configs: list[Path]) -> Path | None:
     """Return the active Proton VPN configuration, if any."""
-    runtime_dir = Path("/var/run/wireguard")
+    interfaces = get_wireguard_interfaces()
 
-    matches = [
-        config for config in configs if (runtime_dir / f"{config.stem}.name").is_file()
-    ]
+    if not interfaces:
+        remove_stale_runtime_files(configs)
+        return None
+
+    matches = []
+
+    for config in configs:
+        interface = get_runtime_interface(config)
+
+        if interface in interfaces:
+            matches.append(config)
 
     if not matches:
         return None
@@ -175,7 +338,7 @@ def choose_config(
     return random.choice(candidates)
 
 
-def rotate_ip() -> None:
+def rotate_ip(country: str | None = None) -> None:
     """Switch to a different VPN server and verify the public IP changes."""
     configs = discover_configs()
 
@@ -183,6 +346,13 @@ def rotate_ip() -> None:
         raise RuntimeError("No WireGuard configurations are available.")
 
     current = get_active_config(configs)
+
+    if country:
+        configs = filter_configs_by_country(configs, country)
+
+        if not configs:
+            raise ValueError(f"No VPN configurations found for country: {country}")
+
     selected = choose_config(configs, current)
     old_ip = get_public_ip()
 
@@ -235,6 +405,40 @@ def rotate_ip() -> None:
     print(f"Connected:   {selected.parent.name} / {selected.stem}")
 
 
+def get_rotation_delay(
+    interval: int | None,
+    random_interval: list[int] | None,
+) -> int | None:
+    """Return the delay before the next rotation."""
+    if random_interval:
+        minimum, maximum = random_interval
+        return random.randint(minimum, maximum)
+
+    return interval
+
+
+def run_rotation_loop(
+    country: str | None,
+    interval: int | None,
+    random_interval: list[int] | None,
+) -> None:
+    """Rotate IP addresses until interrupted."""
+    while True:
+        rotate_ip(country)
+
+        delay = get_rotation_delay(
+            interval,
+            random_interval,
+        )
+
+        if delay is None:
+            return
+
+        print(f"Next rotation in {delay} seconds.")
+
+        time.sleep(delay)
+
+
 def print_configs(configs: list[Path]) -> None:
     """Print available WireGuard configurations."""
     if not configs:
@@ -262,7 +466,9 @@ def main() -> int:
         if args.connect:
             config = get_config(args.connect)
             connect_vpn(config)
-            print(f"Connected using {config.stem}.")
+            new_ip = get_public_ip()
+            print(f"New IP:      {new_ip}")
+            print(f"Connected:   {config.parent.name} / {config.stem}")
             return 0
 
         if args.disconnect is not None:
@@ -272,9 +478,16 @@ def main() -> int:
             return 0
 
         if args.rotate:
-            rotate_ip()
+            run_rotation_loop(
+                args.country,
+                args.interval,
+                args.random_interval,
+            )
             return 0
 
+    except KeyboardInterrupt:
+        print("\nRotation stopped.")
+        return 0
     except (RuntimeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
