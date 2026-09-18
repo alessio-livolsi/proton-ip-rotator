@@ -9,8 +9,13 @@ requirements-dev.txt
 ruff.toml
 .importlinter
 
-# Logs
+# Coverage reports
+htmlcov/
+.coverage
+
+# Logs and debug files
 *.log
+login_debug.png
 
 # Virtual env
 .venv/
@@ -26,6 +31,9 @@ venv/
 
 # Ruff cache
 .ruff_cache/
+
+# Pytest cache
+.pytest_cache/
 
 # ProtonVPN WireGuard configurations
 # These contain private credentials and must never be committed.
