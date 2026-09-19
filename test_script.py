@@ -55,6 +55,34 @@ def test_parse_args_rotation(monkeypatch: pytest.MonkeyPatch) -> None:
     assert args.random_interval is None
 
 
+@pytest.mark.parametrize(
+    "country",
+    [
+        "United Kingdom",
+        "United States",
+    ],
+)
+def test_parse_args_country_with_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+    country: str,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "script.py",
+            "--rotate",
+            "--country",
+            country,
+        ],
+    )
+
+    args = script.parse_args()
+
+    assert args.rotate is True
+    assert args.country == country
+
+
 def test_parse_args_random_interval(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         sys,
@@ -111,6 +139,25 @@ def test_filter_configs_by_country_is_case_insensitive(tmp_path: Path) -> None:
     configs = [italy, china]
 
     assert script.filter_configs_by_country(configs, "italy") == [italy]
+
+
+@pytest.mark.parametrize(
+    "country",
+    [
+        "United Kingdom",
+        "United States",
+    ],
+)
+def test_filter_configs_by_country_handles_spaces(
+    tmp_path: Path,
+    country: str,
+) -> None:
+    config = make_config(tmp_path, country, "SERVER")
+
+    assert script.filter_configs_by_country(
+        [config],
+        country,
+    ) == [config]
 
 
 def test_get_config_is_case_insensitive(tmp_path: Path) -> None:
