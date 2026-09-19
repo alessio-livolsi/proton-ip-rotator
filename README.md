@@ -1,5 +1,7 @@
 # Proton IP Rotator
 
+[![codecov](https://codecov.io/gh/alessio-livolsi/proton-ip-rotator/graph/badge.svg?token=G3U4G2CHI8)](https://codecov.io/gh/alessio-livolsi/proton-ip-rotator)
+
 A Python CLI for rotating public IP addresses through Proton VPN WireGuard configurations on macOS.
 
 The project uses Proton VPN WireGuard `.conf` files together with `wg`, `wg-quick`, and `wireguard-go` to connect to different Proton VPN servers, verify the resulting public IP address, and optionally rotate between servers at fixed or random intervals.
