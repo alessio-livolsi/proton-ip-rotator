@@ -10,6 +10,7 @@ ruff.toml
 
 # Coverage reports
 htmlcov/
+coverage.xml
 .coverage
 
 # Logs and debug files
