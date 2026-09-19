@@ -1,5 +1,6 @@
 # Proton IP Rotator
 
+[![Tests](https://github.com/alessio-livolsi/proton-ip-rotator/actions/workflows/tests.yml/badge.svg)](https://github.com/alessio-livolsi/proton-ip-rotator/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/alessio-livolsi/proton-ip-rotator/graph/badge.svg?token=G3U4G2CHI8)](https://codecov.io/gh/alessio-livolsi/proton-ip-rotator)
 
 A Python CLI for rotating public IP addresses through Proton VPN WireGuard configurations on macOS.
