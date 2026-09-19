@@ -534,7 +534,7 @@ def test_get_disconnect_config_uses_active_config(
 def test_get_disconnect_config_rejects_missing_active_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(script, "discover_configs", lambda: [])
+    monkeypatch.setattr(script, "discover_configs", list)
     monkeypatch.setattr(script, "get_active_config", lambda configs: None)
 
     with pytest.raises(RuntimeError, match="No Proton VPN configuration is active"):
@@ -640,7 +640,7 @@ def test_rotate_ip_filters_by_country(
 def test_rotate_ip_rejects_missing_configs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(script, "discover_configs", lambda: [])
+    monkeypatch.setattr(script, "discover_configs", list)
 
     with pytest.raises(RuntimeError, match="No WireGuard configurations"):
         script.rotate_ip()
